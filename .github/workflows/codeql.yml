@@ -1,5 +1,4 @@
   name: "Code Scanning using CodeQL"
-  
   on:
     push:
       branches: [ "main" ]
@@ -8,40 +7,75 @@
     
   jobs:
     analyze:
-      name: Analyze
+      name: CodeQL Code Scanning
       runs-on: ubuntu-latest
   
       strategy:
         fail-fast: false
         matrix:
-          language: [ 'javascript', 'python' ]
-    
+          language: [ 'javascript', 'python', 'java' ]
+            # CodeQL supports [ 'cpp', 'csharp', 'go', 'java', 'javascript', 'python', 'ruby', 'swift' ]
+            # Use only 'java' to analyze code written in Java, Kotlin or both
+            # Use only 'javascript' to analyze code written in JavaScript, TypeScript or both
+            # Learn more about CodeQL language support at https://aka.ms/codeql-docs/language-support
+      
+      
       steps:
-      - name: Code Language 
-        run: echo ${{ matrix.language }}
+        - name: Code Language 
+          run: echo ${{ matrix.language }}
+          
+        - name: Checkout Source
+          uses: actions/checkout@v4
       
-      - name: Checkout repository
-        uses: actions/checkout@v4
-  
-      # setup nodejs
-      - name: Setup Node for Python or JS Only
-        uses: actions/setup-node@v4
-        with:
-          node-version: 18
-      
-      # Initializes the CodeQL tools for scanning.
-      # ignore some files
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
-        with:
-          languages: ${{ matrix.language }}
-          config: |
+        - if: ${{ matrix.language == 'java' }}
+          name: Set up JDK for Java Code
+          uses: actions/setup-java@v3
+          with:
+            java-version: 11
+            java-package: jdk
+            distribution: microsoft
+            # Using the integrated cache functionality to speed up builds
+            cache: maven
+        
+        - if: ${{ matrix.language == 'python'  || matrix.language == 'javascript' }}
+          name: Initialize CodeQL Scanning for Interpreter Languages
+          uses: github/codeql-action/init@v2
+          with:
+            languages: ${{ matrix.language }}
+            config: |
               paths-ignore:
                 - /data/static/codefixes/*.ts
+      
          
+            
+        - if: ${{ matrix.language == 'python'  || matrix.language == 'javascript' }}     
+          name: Setup Node for Python or JS Only
+          uses: actions/setup-node@v4
+          with:
+            node-version: 18
   
-      # Perform analysis and upload result back to GitHub
-      - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
-        with:
-          category: "/language:${{matrix.language}}"
+        - if: ${{ matrix.language == 'python'  || matrix.language == 'javascript' }} 
+          name: Autobuild for Python or JS Only
+          uses: github/codeql-action/autobuild@v2
+          
+        
+        # We are using a custom build step to have greater control over the build process over using autobuild
+        #- name: Custom Build Step
+        - if: ${{ matrix.language == 'java' }}
+          name: Initialize CodeQL Scanning for Java
+          uses: github/codeql-action/init@v2
+          with:
+            languages: ${{ matrix.language }}
+            #config-file: ./.github/codeql/codeql-config.yml
+            queries: security-extended
+            packs: +codeql/java-queries:experimental/Security/CWE/CWE-020/Log4jJndiInjection.ql
+            
+        - if: ${{ matrix.language == 'java' }}
+          name: Custom Build Step for Compiled Langugage
+          run: mvn compile -B
+          shell: bash
+  
+        - name: Perform CodeQL Analysis
+          uses: github/codeql-action/analyze@v2
+          with:
+            category: "/language:${{matrix.language}}"
